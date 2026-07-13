@@ -15,8 +15,8 @@ empty_values = ["", "-", " - "]
 # List of games level in ascending order of difficulty to ref
 levels_prefix_lvl = ["", "U9", "U10", "U11", "U12", "U13", "U14", "CDC9F", "CDC9M", "CDC10F", "CDC10M", 
                  "CDC11FD2", "CDC11FD1", "CDC11MD2", "CDC11MD1", "CDC12FD2", "CDC12FD1", "CDC12MD2", "CDC12MD1", 
-                 "F13LR", "M13LR", "F13IRD2", "F13IRD1", "M13IRD2", "M13IRD1", "LSF" , "F14IV", "M14IV", "F14LR", "F14LR", "M14IR", "M14IR", 
-                 "F15IV", "M15IV", "F15LR", "F15LR", "M15IR", "M15IR", "F16IV", "M16IV", "LSM"]
+                 "F13LR", "M13LR", "F13IRD2", "F13IRD1", "M13IRD2", "M13IRD1", "LSF" , "F14IV", "M14IV", "F14LR", "M14LR", "F14IR", "M14IR", 
+                 "F15IV", "M15IV", "F15LR", "M15LR", "F15IR", "M15IR", "F16IV", "M16IV", "LSM"]
 
 # List of games level in descending order of length
 levels_prefix_len = sorted(levels_prefix_lvl, key=len, reverse=True)
@@ -33,6 +33,7 @@ global_stats = {
     "coverage": 0,
     "supervised_games": 0,
     "unique_refs": 0,
+    "unique_supervisors": 0,
     "avg_games": 0,
     "slots_by_role": {
         "ref": 0,
@@ -84,7 +85,25 @@ def compare_game(game1, game2):
         return game2
     else:
         return game1
+    
+def create_official(official, initial_date):
+    global_stats["unique_refs"] += 1
+    ref_data[official] = {
+        "name": official,
+        "total_games": 0,
+        "central_count": 0,
+        "ar_count": 0,
+        "highest_central_game": "",
+        "highest_ar_game": "",
+        "oldest_game": initial_date,
+        "newest_game": initial_date,
+        "games_supervised": 0,
+        "times_supervised": 0
+        }
 
+########################################################
+# CSV Parsing and Data Collection
+########################################################
 
 try:
     with open(file_path, mode="r", encoding="utf-8") as csv_file:
@@ -106,11 +125,16 @@ try:
             # Get variables from csv
             game = row['Game'] 
             date_str = row['Date']
-            #date = datetime.strptime(row['Date'], "%Y-%m-%d").date()
             ref  = row['Referee'].rstrip('✅ ')
             ar1  = row['Assistant 1'].rstrip('✅ ')
             ar2  = row['Assistant 2'].rstrip('✅ ')
             sup = row['Supervisor'].rstrip('✅ ')
+
+            #Parse the date ONCE per row
+            try:
+                current_date = datetime.strptime(date_str, "%Y-%m-%d").date()
+            except ValueError:
+                continue    # Skip rows with malformed dates
 
 
             ################## Use data from CSV ##################
@@ -118,97 +142,42 @@ try:
             # Increase total stats
             global_stats["total_games"] += 1
 
-            # Increase ref stats
-            if ref != "":
-                global_stats["total_slots"] += 1
-                global_stats["slots_by_role"]["ref"] += 1
-                if ref == "-":
-                    global_stats["missing_slots"] +=1
-                    global_stats["missing_by_role"]["ref"] += 1
-                else:
-                    global_stats["filled_slots"] +=1
-                    global_stats["filled_by_role"]["ref"] += 1
+            # Role parsing
+            roles = {"ref": ref, "ar1": ar1, "ar2": ar2}
 
-            # Increase ar1 stats
-            if ar1 != "":
-                global_stats["total_slots"] += 1
-                global_stats["slots_by_role"]["ar1"] += 1
-                if ar1 == "-":
-                    global_stats["missing_slots"] +=1
-                    global_stats["missing_by_role"]["ar1"] += 1
-                else:
-                    global_stats["filled_slots"] +=1
-                    global_stats["filled_by_role"]["ar1"] += 1
-
-            # Increase ar2 stats
-            if ar2 != "":
-                global_stats["total_slots"] += 1
-                global_stats["slots_by_role"]["ar2"] += 1
-                if ar1 == "-":
-                    global_stats["missing_slots"] +=1
-                    global_stats["missing_by_role"]["ar2"] += 1
-                else:
-                    global_stats["filled_slots"] +=1
-                    global_stats["filled_by_role"]["ar2"] += 1
-
+            # Increase official stat for every positions:
+            for role_key, official_name in roles.items():
+                if official_name != "":
+                    global_stats["total_slots"] += 1
+                    global_stats["slots_by_role"][role_key] += 1
+                    
+                    if official_name in empty_values:
+                        global_stats["missing_slots"] += 1
+                        global_stats["missing_by_role"][role_key] += 1
+                    else:
+                        global_stats["filled_slots"] += 1
+                        global_stats["filled_by_role"][role_key] += 1
 
             # Create new dict entry for all new officials not already in dict
-            for official in [ref, ar1, ar2]:
+            for official in [ref, ar1, ar2, sup]:
                 if official not in ref_data and official not in empty_values:
-                    global_stats["unique_refs"] += 1
-                    ref_data[official] = {
-                    "name": official,
-                    "total_games": 0,
-                    "central_count": 0,
-                    "ar_count": 0,
-                    "highest_central_game": "",
-                    "highest_ar_game": "",
-                    "oldest_game": date_str,
-                    "newest_game": date_str,
-                    "games_supervised": 0,
-                    "times_supervised": 0
-                    }
+                    create_official(official, current_date)
             
-            # Create new dict entry for supervisor not already in dict
-            if sup not in ref_data and sup not in empty_values:
-                global_stats["unique_refs"] += 1
-                ref_data[sup] = {
-                    "name": sup,
-                    "total_games": 0,
-                    "central_count": 0,
-                    "ar_count": 0,
-                    "highest_central_game": "",
-                    "highest_ar_game": "",
-                    "oldest_game": date_str,
-                    "newest_game": date_str,
-                    "games_supervised": 0,
-                    "times_supervised": 0
-                    }
-                
             # Update Count + game dates
-            for official in [ref, ar1, ar2]:
+            for role_key, official in roles.items():
                 if official not in empty_values:
-                    ref_data[official]["total_games"] += 1
+                    profile = ref_data[official]
+                    profile["total_games"] += 1
 
                     # Increase supervised count if game had a supervisor
                     if sup not in empty_values:
-                        ref_data[official]["times_supervised"] += 1
+                        profile["times_supervised"] += 1
                 
-                    ## Update oldest and newest games ##
-                    # Convert game date in string to date object for comparaison
-                    current_date = datetime.strptime(date_str, "%Y-%m-%d").date()
-
-                    # Turn strings in dict to date objects
-                    saved_oldest = datetime.strptime(ref_data[official]["oldest_game"], "%Y-%m-%d").date()
-                    saved_newest = datetime.strptime(ref_data[official]["newest_game"], "%Y-%m-%d").date()
-
-                    # Check if current date is older than previous oldest date
-                    if current_date < saved_oldest:
-                        ref_data[official]["oldest_game"] = date_str
-                
-                    # Check if current date is newer than previous newest date
-                    if current_date > saved_newest:
-                        ref_data[official]["newest_game"] = date_str
+                    #Update oldest and newest games
+                    if current_date < profile["oldest_game"]:
+                        profile["oldest_game"] = current_date
+                    if current_date > profile["newest_game"]:
+                        profile["newest_game"] = current_date
 
             # Position Specific updates
             if ref not in empty_values:
@@ -221,6 +190,8 @@ try:
                     ref_data[ar]["highest_ar_game"] = compare_game(ref_data[ar]["highest_ar_game"], game)
 
             if sup in ref_data and sup not in empty_values:
+                if ref_data[sup]["games_supervised"] == 0:
+                    global_stats["unique_supervisors"] += 1
                 global_stats["supervised_games"] += 1
                 ref_data[sup]["games_supervised"] += 1
 
@@ -229,6 +200,15 @@ except FileNotFoundError:
 except PermissionError:
     print("You do not have permission to read that file")
 
+
+########################################################
+# Writing to json
+########################################################
+
+# Final conversion of date objects back into strings for clean JSON export
+for official_profile in ref_data.values():
+    official_profile["oldest_game"] = official_profile.pop("oldest_game").strftime("%Y-%m-%d")
+    official_profile["newest_game"] = official_profile.pop("newest_game").strftime("%Y-%m-%d")
 
 # Convert the dictionary of dictionaries into a list of dictionaries
 referee_json_list = list(ref_data.values())
