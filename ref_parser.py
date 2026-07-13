@@ -9,9 +9,6 @@ from datetime import datetime
 # Write Correct file path
 file_path = "large_sample.csv"
 
-# Create dictionary of dictionary to store ref info
-ref_data = {}
-
 # Create list of entries to skip
 empty_values = ["", "-", " - "]
 
@@ -24,7 +21,35 @@ levels_prefix_lvl = ["", "U9", "U10", "U11", "U12", "U13", "U14", "CDC9F", "CDC9
 # List of games level in descending order of length
 levels_prefix_len = sorted(levels_prefix_lvl, key=len, reverse=True)
 
+# Create dictionary of dictionary to store ref info
+ref_data = {}
 
+# Global stats dict
+global_stats = {
+    "total_games": 0,
+    "total_slots": 0,
+    "filled_slots": 0,
+    "missing_slots": 0,
+    "coverage": 0,
+    "supervised_games": 0,
+    "unique_refs": 0,
+    "avg_games": 0,
+    "slots_by_role": {
+        "ref": 0,
+        "ar1": 0,
+        "ar2": 0
+    },
+    "filled_by_role": {
+        "ref": 0,
+        "ar1": 0,
+        "ar2": 0
+    },
+    "missing_by_role": {
+        "ref": 0,
+        "ar1": 0,
+        "ar2": 0
+    }
+}
 
 ########################################################
 # HELPER FUNCTIONS
@@ -61,16 +86,6 @@ def compare_game(game1, game2):
         return game1
 
 
-
-
-
-
-
-
-
-
-
-
 try:
     with open(file_path, mode="r", encoding="utf-8") as csv_file:
 
@@ -85,6 +100,9 @@ try:
 
         # Loop over csv
         for row in csv_reader:
+
+            ################## Data from CSV ##################
+
             # Get variables from csv
             game = row['Game'] 
             date_str = row['Date']
@@ -95,9 +113,49 @@ try:
             sup = row['Supervisor'].rstrip('✅ ')
 
 
+            ################## Use data from CSV ##################
+
+            # Increase total stats
+            global_stats["total_games"] += 1
+
+            # Increase ref stats
+            if ref != "":
+                global_stats["total_slots"] += 1
+                global_stats["slots_by_role"]["ref"] += 1
+                if ref == "-":
+                    global_stats["missing_slots"] +=1
+                    global_stats["missing_by_role"]["ref"] += 1
+                else:
+                    global_stats["filled_slots"] +=1
+                    global_stats["filled_by_role"]["ref"] += 1
+
+            # Increase ar1 stats
+            if ar1 != "":
+                global_stats["total_slots"] += 1
+                global_stats["slots_by_role"]["ar1"] += 1
+                if ar1 == "-":
+                    global_stats["missing_slots"] +=1
+                    global_stats["missing_by_role"]["ar1"] += 1
+                else:
+                    global_stats["filled_slots"] +=1
+                    global_stats["filled_by_role"]["ar1"] += 1
+
+            # Increase ar2 stats
+            if ar2 != "":
+                global_stats["total_slots"] += 1
+                global_stats["slots_by_role"]["ar2"] += 1
+                if ar1 == "-":
+                    global_stats["missing_slots"] +=1
+                    global_stats["missing_by_role"]["ar2"] += 1
+                else:
+                    global_stats["filled_slots"] +=1
+                    global_stats["filled_by_role"]["ar2"] += 1
+
+
             # Create new dict entry for all new officials not already in dict
             for official in [ref, ar1, ar2]:
                 if official not in ref_data and official not in empty_values:
+                    global_stats["unique_refs"] += 1
                     ref_data[official] = {
                     "name": official,
                     "total_games": 0,
@@ -113,6 +171,7 @@ try:
             
             # Create new dict entry for supervisor not already in dict
             if sup not in ref_data and sup not in empty_values:
+                global_stats["unique_refs"] += 1
                 ref_data[sup] = {
                     "name": sup,
                     "total_games": 0,
@@ -156,14 +215,15 @@ try:
                 ref_data[ref]["central_count"] += 1
                 ref_data[ref]["highest_central_game"] = compare_game(ref_data[ref]["highest_central_game"], game)
 
-
             for ar in [ar1, ar2]:
                 if ar not in empty_values:
                     ref_data[ar]["ar_count"] +=1
                     ref_data[ar]["highest_ar_game"] = compare_game(ref_data[ar]["highest_ar_game"], game)
 
             if sup in ref_data and sup not in empty_values:
+                global_stats["supervised_games"] += 1
                 ref_data[sup]["games_supervised"] += 1
+
 except FileNotFoundError:
     print("That file was not found")
 except PermissionError:
@@ -171,12 +231,29 @@ except PermissionError:
 
 
 # Convert the dictionary of dictionaries into a list of dictionaries
-final_json_list = list(ref_data.values())
+referee_json_list = list(ref_data.values())
 
 # Open a new file and write the list as JSON
 with open("referee_stats.json", "w", encoding="utf-8") as json_file:
     # 'indent=4' formats it nicely to read easily
-    json.dump(final_json_list, json_file, indent=4, ensure_ascii=False)
+    json.dump(referee_json_list, json_file, indent=4, ensure_ascii=False)
 
     print("Successfully saved data to referee_stats.json")
+
+
+# Calculation for additional global stats
+global_stats["coverage"] = (round(global_stats["filled_slots"]/global_stats["total_slots"] * 10000))/100
+sum_of_all_games = 0
+for official_profile in ref_data.values():
+    # Grab the total games field you already calculated for this specific ref
+    sum_of_all_games += official_profile["total_games"]
+global_stats["avg_games"] = round(sum_of_all_games/global_stats["unique_refs"])
+
+
+# Open a new file and write the list as JSON
+with open("global_stats.json", "w", encoding="utf-8") as json_file:
+    # 'indent=4' formats it nicely to read easily
+    json.dump(global_stats, json_file, indent=4, ensure_ascii=False)
+
+    print("Successfully saved data to global_stats.json")
 
