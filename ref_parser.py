@@ -16,10 +16,12 @@ weekday_names = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturd
 empty_values = ["", "-", " - "]
 
 # List of games level in ascending order of difficulty to ref
-levels_prefix_lvl = ["", "U9", "U10", "U11", "U12", "U13", "U14", "CDC9F", "CDC9M", "CDC10F", "CDC10M", 
-                 "CDC11FD2", "CDC11FD1", "CDC11MD2", "CDC11MD1", "CDC12FD2", "CDC12FD1", "CDC12MD2", "CDC12MD1", 
-                 "F13LR", "M13LR", "F13IRD2", "F13IRD1", "M13IRD2", "M13IRD1", "LSF" , "F14IV", "M14IV", "F14LR", "M14LR", "F14IR", "M14IR", 
-                 "F15IV", "M15IV", "F15LR", "M15LR", "F15IR", "M15IR", "F16IV", "M16IV", "LSM"]
+levels_prefix_lvl = [
+    "", "U9", "U10", "U11", "U12", "U13", "U14", "CDC9F", "CDC9M", "CDC10F", "CDC10M", 
+    "CDC11FD2", "CDC11FD1", "CDC11MD2", "CDC11MD1", "CDC12FD2", "CDC12FD1", "CDC12MD2", "CDC12MD1", 
+    "F13LR", "M13LR", "F13IRD2", "F13IRD1", "M13IRD2", "M13IRD1", "LSF", "F14IV", "M14IV", "F14LR", 
+    "M14LR", "F14IR", "M14IR", "F15IV", "M15IV", "F15LR", "M15LR", "F15IR", "M15IR", "F16IV", "M16IV", "LSM"
+]
 
 # List of games level in descending order of length
 levels_prefix_len = sorted(levels_prefix_lvl, key=len, reverse=True)
@@ -46,21 +48,21 @@ global_stats = {
     "avg_games": 0,
     "unique_supervisors": 0,
     "slots_by_role": {
-        "ref": 0,
+        "ref1": 0,
         "ar1": 0,
         "ar2": 0,
         "ref2": 0,
         "ref4": 0
     },
     "filled_by_role": {
-        "ref": 0,
+        "ref1": 0,
         "ar1": 0,
         "ar2": 0,
         "ref2": 0,
         "ref4": 0
     },
     "missing_by_role": {
-        "ref": 0,
+        "ref1": 0,
         "ar1": 0,
         "ar2": 0,
         "ref2": 0,
@@ -183,7 +185,7 @@ try:
             global_stats["total_games"] += 1
 
             # Role parsing
-            roles = {"ref": ref1, "ref2": ref2, "ar1": ar1, "ar2": ar2, "ref4": ref4}
+            roles = {"ref1": ref1, "ref2": ref2, "ar1": ar1, "ar2": ar2, "ref4": ref4}
 
             # Increase official stat for every positions:
             for role_key, official_name in roles.items():
@@ -220,16 +222,22 @@ try:
                         profile["newest_game"] = current_date
 
             # Position Specific updates
+            if sup not in empty_values:
+                if current_date < ref_data[sup]["oldest_game"]:
+                    ref_data[sup]["oldest_game"] = current_date
+                if current_date > ref_data[sup]["newest_game"]:
+                    ref_data[sup]["newest_game"] = current_date
+
             for ref in [ref1, ref2]:
                 if ref not in empty_values:
                     ref_data[ref]["central_count"] += 1
                     ref_data[ref]["highest_central_game"] = compare_game(ref_data[ref]["highest_central_game"], game)
             for ar in [ar1, ar2]:
                 if ar not in empty_values:
-                    ref_data[ar]["ar_count"] +=1
+                    ref_data[ar]["ar_count"] += 1
                     ref_data[ar]["highest_ar_game"] = compare_game(ref_data[ar]["highest_ar_game"], game)
             if ref4 not in empty_values:
-                ref_data[ref4]["4th_ref_count"] +1
+                ref_data[ref4]["4th_ref_count"] += 1
             if sup in ref_data and sup not in empty_values:
                 if ref_data[sup]["games_supervised"] == 0:
                     global_stats["unique_supervisors"] += 1
@@ -247,7 +255,7 @@ try:
                 field_distribution[location_name] = field_distribution.get(location_name, 0) + 1
 
             # Create a list of active on-field officials for this game
-            current_crew = [ref1, ar1, ar2]
+            current_crew = [ref1, ref2, ar1, ar2]
             # Filter out empty values so we only look at actual people
             active_crew = [name for name in current_crew if name not in empty_values]
 
@@ -282,8 +290,10 @@ except PermissionError:
 
 # Final conversion of date objects back into strings for clean JSON export
 for official_profile in ref_data.values():
-    official_profile["oldest_game"] = official_profile.pop("oldest_game").strftime("%Y-%m-%d")
-    official_profile["newest_game"] = official_profile.pop("newest_game").strftime("%Y-%m-%d")
+    if hasattr(official_profile["oldest_game"], "strftime"):
+        official_profile["oldest_game"] = official_profile["oldest_game"].strftime("%Y-%m-%d")
+    if hasattr(official_profile["newest_game"], "strftime"):
+        official_profile["newest_game"] = official_profile["newest_game"].strftime("%Y-%m-%d")
 
 # Convert the dictionary of dictionaries into a list of dictionaries
 referee_json_list = list(ref_data.values())
@@ -307,10 +317,6 @@ if global_stats["unique_refs"] > 0:
 # Add previously calculated field distribution to the dict:
 global_stats["field distribution"] = dict(sorted(field_distribution.items(), key=lambda x: x[1], reverse=True))
 
-# Filter out days with less than 3 games
-big_days = {date: count for date, count in games_by_date.items() if count > 3}
-sorted_days = dict(sorted(big_days.items(), key=lambda item: item[1], reverse=True))
-
 # Get total games per weekday
 for specific_date_str, game_count in games_by_date.items():
     # Convert string back to a date object to find the weekday
@@ -330,8 +336,8 @@ for day in weekday_names:
     unique_day_count = len(unique_dates_per_weekday[day])
     
     # Calculate average
-    if global_stats["total_slots"] > 0:
-        weekday_averages[day] = round(total_games / unique_day_count, 0)
+    if unique_day_count > 0:
+        weekday_averages[day] = int(round(total_games / unique_day_count, 0))
     else:
         weekday_averages[day] = 0
     weekday_averages[day] = int(weekday_averages[day])
@@ -373,3 +379,50 @@ with open("global_stats.json", "w", encoding="utf-8") as json_file:
 with open("crew_pairings.json", "w", encoding="utf-8") as json_file:
     json.dump(sorted_pairings, json_file, indent=4, ensure_ascii=False)
     print("Successfully saved data to crew_pairings.json (Filtered: > 2 games)")
+
+########################################################
+# Helper function to get data from referee stats
+########################################################
+def get_top_referees(n=10):
+    """Returns the top N referees sorted by total games officiated."""
+    # Sort officials by total_games in descending order
+    sorted_refs = sorted(
+        ref_data.values(), key=lambda x: x["total_games"], reverse=True
+    )
+    return sorted_refs[:n]
+
+
+def get_top_supervisors(n=5):
+    """Returns the top N supervisors sorted by games supervised."""
+    sorted_sups = sorted(
+        ref_data.values(), key=lambda x: x["games_supervised"], reverse=True
+    )
+    return sorted_sups[:n]
+
+
+def get_official_profile(name):
+    """Retrieves the full profile for a given official by name."""
+    return ref_data.get(name, f"Official '{name}' not found.")
+
+print("\n--- TOP 10 REFEREES BY TOTAL GAMES ---")
+for rank, ref in enumerate(get_top_referees(10), start=1):
+    print(
+        f"{rank:2d}. {ref['name']:<20} | Games: {ref['total_games']} "
+        f"(Central: {ref['central_count']}, AR: {ref['ar_count']})"
+    )
+
+print("\n--- TOP SUPERVISOR ---")
+top_sup = get_top_supervisors(5)
+if top_sup:
+    sup = top_sup[0]
+    print(f"Name: {sup['name']}")
+    print(f"Games Supervised: {sup['games_supervised']}")
+
+print("\n--- FULL PROFILE LOOKUP ---")
+profile = get_official_profile("Félix Frosa")  # Replace with actual name
+
+if isinstance(profile, dict):
+    print(json.dumps(profile, indent=4, ensure_ascii=False))
+else:
+    print(profile)
+
