@@ -419,10 +419,12 @@ if top_sup:
     print(f"Games Supervised: {sup['games_supervised']}")
 
 print("\n--- FULL PROFILE LOOKUP ---")
-profile = get_official_profile("Félix Frosa")  # Replace with actual name
-
-if isinstance(profile, dict):
-    print(json.dumps(profile, indent=4, ensure_ascii=False))
-else:
-    print(profile)
+print("\n--------------------------------------------")
+while True:
+    ref_name = input("Enter a referee name: ")
+    profile = get_official_profile(ref_name)  # Replace with actual name
+    if isinstance(profile, dict):
+        print(json.dumps(profile, indent=4, ensure_ascii=False))
+    else:
+        print(profile)
 
