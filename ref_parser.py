@@ -7,7 +7,7 @@ from datetime import datetime
 ########################################################
 
 # Write Correct file path
-file_path = "large_sample.csv"
+file_path = "april_to_july_assignment.csv"
 
 # List of day of the week
 weekday_names = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
@@ -70,6 +70,9 @@ global_stats = {
     }
 }
 
+# List of active referees in csv
+ref_list = []
+
 ########################################################
 # HELPER FUNCTIONS
 ########################################################
@@ -120,6 +123,8 @@ def create_official(official, initial_date):
         "games_supervised": 0,
         "times_supervised": 0
         }
+    first_name, family_name = official.split(" ", 1)
+    ref_list.append({"First Name": first_name, "Last Name": family_name})
 
 # Helper function to clean up field names
 def get_location_name(field_str):
@@ -164,12 +169,12 @@ try:
             # Get variables from csv
             game = row['Game'] 
             date_str = row['Date']
-            ref1 = row['Referee'].rstrip('✅ ')
-            ref2 = row['Referee 2'].rstrip('✅ ')
-            ar1  = row['Assistant 1'].rstrip('✅ ')
-            ar2  = row['Assistant 2'].rstrip('✅ ')
-            ref4 = row['4th Referee'].rstrip('✅ ')
-            sup = row['Supervisor'].rstrip('✅ ')
+            ref1 = row['Referee'].rstrip('✅ ').rstrip('⌛ ')
+            ref2 = row['Referee 2'].rstrip('✅ ').rstrip('⌛ ')
+            ar1  = row['Assistant 1'].rstrip('✅ ').rstrip('⌛ ')
+            ar2  = row['Assistant 2'].rstrip('✅ ').rstrip('⌛ ')
+            ref4 = row['4th Referee'].rstrip('✅ ').rstrip('⌛ ')
+            sup = row['Supervisor'].rstrip('✅ ').rstrip('⌛ ')
 
 
             # Parse the date once per row
@@ -379,6 +384,14 @@ with open("global_stats.json", "w", encoding="utf-8") as json_file:
 with open("crew_pairings.json", "w", encoding="utf-8") as json_file:
     json.dump(sorted_pairings, json_file, indent=4, ensure_ascii=False)
     print("Successfully saved data to crew_pairings.json (Filtered: > 2 games)")
+
+# Open a new file and write the list as csv
+ref_list_fields = ["First Name", "Last Name"]
+with open("ref_list.csv", "w", newline="", encoding="utf-8") as csv_file:
+    writer = csv.DictWriter(csv_file, fieldnames=ref_list_fields)
+    writer.writeheader()  # Writes header
+    writer.writerows(ref_list)
+    print("Successfully saved list of referees to ref_list.csv")
 
 ########################################################
 # Helper function to get data from referee stats
