@@ -1,6 +1,7 @@
-import csv
+import itertools
 import json
-from datetime import datetime
+import numpy as np
+import pandas as pd
 
 ########################################################
 # PROGRAM CONSTANTS AND VARIABLES
@@ -10,17 +11,62 @@ from datetime import datetime
 file_path = "april_to_july_assignment.csv"
 
 # List of day of the week
-weekday_names = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+weekday_names = [
+    "Monday",
+    "Tuesday",
+    "Wednesday",
+    "Thursday",
+    "Friday",
+    "Saturday",
+    "Sunday",
+]
 
 # Create list of entries to skip
 empty_values = ["", "-", " - "]
 
 # List of games level in ascending order of difficulty to ref
 levels_prefix_lvl = [
-    "", "U9", "U10", "U11", "U12", "U13", "U14", "CDC9F", "CDC9M", "CDC10F", "CDC10M", 
-    "CDC11FD2", "CDC11FD1", "CDC11MD2", "CDC11MD1", "CDC12FD2", "CDC12FD1", "CDC12MD2", "CDC12MD1", 
-    "F13LR", "M13LR", "F13IRD2", "F13IRD1", "M13IRD2", "M13IRD1", "LSF", "F14IV", "M14IV", "F14LR", 
-    "M14LR", "F14IR", "M14IR", "F15IV", "M15IV", "F15LR", "M15LR", "F15IR", "M15IR", "F16IV", "M16IV", "LSM"
+    "",
+    "U9",
+    "U10",
+    "U11",
+    "U12",
+    "U13",
+    "U14",
+    "CDC9F",
+    "CDC9M",
+    "CDC10F",
+    "CDC10M",
+    "CDC11FD2",
+    "CDC11FD1",
+    "CDC11MD2",
+    "CDC11MD1",
+    "CDC12FD2",
+    "CDC12FD1",
+    "CDC12MD2",
+    "CDC12MD1",
+    "F13LR",
+    "M13LR",
+    "F13IRD2",
+    "F13IRD1",
+    "M13IRD2",
+    "M13IRD1",
+    "LSF",
+    "F14IV",
+    "M14IV",
+    "F14LR",
+    "M14LR",
+    "F14IR",
+    "M14IR",
+    "F15IV",
+    "M15IV",
+    "F15LR",
+    "M15LR",
+    "F15IR",
+    "M15IR",
+    "F16IV",
+    "M16IV",
+    "LSM",
 ]
 
 # List of games level in descending order of length
@@ -28,10 +74,12 @@ levels_prefix_len = sorted(levels_prefix_lvl, key=len, reverse=True)
 
 # Global info trackers
 field_distribution = {}
-crew_pairings = {} # Key: "Name A & Name B", Value: Count
+crew_pairings = {}  # Key: "Name A & Name B", Value: Count
 games_by_date = {}  # Key: "2026-05-02", Value: Count
 total_games_per_weekday = {day: 0 for day in weekday_names}
-unique_dates_per_weekday = {day: set() for day in weekday_names} # Uses a set to count unique calendar dates
+unique_dates_per_weekday = (
+    {}
+)  # Uses pandas grouping for unique calendar dates
 
 # Create dictionary of dictionary to store ref info
 ref_data = {}
@@ -47,27 +95,9 @@ global_stats = {
     "unique_refs": 0,
     "avg_games": 0,
     "unique_supervisors": 0,
-    "slots_by_role": {
-        "ref1": 0,
-        "ar1": 0,
-        "ar2": 0,
-        "ref2": 0,
-        "ref4": 0
-    },
-    "filled_by_role": {
-        "ref1": 0,
-        "ar1": 0,
-        "ar2": 0,
-        "ref2": 0,
-        "ref4": 0
-    },
-    "missing_by_role": {
-        "ref1": 0,
-        "ar1": 0,
-        "ar2": 0,
-        "ref2": 0,
-        "ref4": 0
-    }
+    "slots_by_role": {"ref1": 0, "ar1": 0, "ar2": 0, "ref2": 0, "ref4": 0},
+    "filled_by_role": {"ref1": 0, "ar1": 0, "ar2": 0, "ref2": 0, "ref4": 0},
+    "missing_by_role": {"ref1": 0, "ar1": 0, "ar2": 0, "ref2": 0, "ref4": 0},
 }
 
 # List of active referees in csv
@@ -77,210 +107,244 @@ ref_list = []
 # HELPER FUNCTIONS
 ########################################################
 
+
 # Helper function to get level prefix of a game
 def get_prefix(game_str):
-    """
-    Helper function to find which prefix the game string starts with.
-    Iterates backwards through the prefix list to match the longest prefix first 
-    """
+    """Helper function to find which prefix the game string starts with.
 
-    # Sort by length descending so longer prefix match first
+    Iterates backwards through the prefix list to match the longest prefix
+    first
+    """
+    if not isinstance(game_str, str):
+        return ""
     for prefix in levels_prefix_len:
         if prefix and game_str.startswith(prefix):
             return prefix
-    return "" # Default backup if nothing matches
+    return ""  # Default backup if nothing matches
 
-# Helper function to compare the levels of two games and return highest game
-def compare_game(game1, game2):
-    """Compare the level of two games and return the highest level one"""  
-    # Get level prefix from game
-    pre1 = get_prefix(game1)
-    pre2 = get_prefix(game2)
-
-    # Get rank (index) of levels
-    rank1 = levels_prefix_lvl.index(pre1)
-    rank2 = levels_prefix_lvl.index(pre2)
-
-    if rank1 < rank2:
-        return game2
-    else:
-        return game1
-    
-# Helper function to create new official dict
-def create_official(official, initial_date):
-    """Create a new dict for official not registered yet"""
-    global_stats["unique_refs"] += 1
-    ref_data[official] = {
-        "name": official,
-        "total_games": 0,
-        "central_count": 0,
-        "ar_count": 0,
-        "4th_ref_count": 0,
-        "highest_central_game": "",
-        "highest_ar_game": "",
-        "oldest_game": initial_date,
-        "newest_game": initial_date,
-        "games_supervised": 0,
-        "times_supervised": 0
-        }
-    first_name, family_name = official.split(" ", 1)
-    ref_list.append({"First Name": first_name, "Last Name": family_name})
 
 # Helper function to clean up field names
 def get_location_name(field_str):
     """Groups specific field names into their main park/location names."""
-    if not field_str or field_str in empty_values:
+    if not field_str or field_str in empty_values or pd.isna(field_str):
         return "Unknown/TBA"
-        
-    location = field_str
-    
+
+    location = str(field_str)
+
     # Clean up "Dôme Centre Multisport" variations
     if "Dôme Centre Multisport" in location:
         return "Dôme Centre Multisport"
-        
+
     # Remove common trailing field identifiers like " - 1", " - 2", " - A", " - B", " - Synthétique"
-    suffixes_to_strip = [" - 1", " - 2", " - 3", " - A", " - B", " - C", " - Synthétique", " (SYNTH)"]
+    suffixes_to_strip = [
+        " - 1",
+        " - 2",
+        " - 3",
+        " - A",
+        " - B",
+        " - C",
+        " - Synthétique",
+        " (SYNTH)",
+    ]
     for suffix in suffixes_to_strip:
         if location.endswith(suffix):
-            location = location.replace(suffix, "")  
+            location = location.replace(suffix, "")
     return location.strip()
 
+
 ########################################################
-# CSV Parsing and Data Collection
+# CSV Parsing and Data Collection (Pandas Accelerated)
 ########################################################
+
+df = pd.DataFrame()
 
 try:
-    with open(file_path, mode="r", encoding="utf-8") as csv_file:
+    # Column mapping & CSV loading
+    fieldNames = [
+        "Game",
+        "Date",
+        "Time",
+        "Field",
+        "Home Team",
+        "Away Team",
+        "Status",
+        "Referee",
+        "Referee 2",
+        "Assistant 1",
+        "Assistant 2",
+        "4th Referee",
+        "Supervisor",
+        "Schedule",
+    ]
 
-        # Determine columns name (second referee collumn changed to "Referee 2" for clarity)
-        fieldNames = ['Game', 'Date', 'Time', 'Field', 'Home Team', 'Away Team', 'Status', 'Referee', 'Referee 2', 'Assistant 1', 'Assistant 2', '4th Referee', 'Supervisor', 'Schedule']
-        
-        # Create reader, read using DictReader, and assign correct field names
-        csv_reader = csv.DictReader(csv_file, fieldnames = fieldNames)
+    # Read CSV with pandas, skip first row as per original DictReader logic
+    df = pd.read_csv(
+        file_path,
+        skiprows=1,
+        names=fieldNames,
+        header=None,
+        dtype=str,
+        encoding="utf-8",
+    )
 
-        # Skip first line of file
-        next(csv_reader)
+    # Clean date column and drop invalid date rows
+    df["Date_Parsed"] = pd.to_datetime(
+        df["Date"], format="%Y-%m-%d", errors="coerce"
+    )
+    df = df.dropna(subset=["Date_Parsed"]).copy()
 
-        # Loop over csv
-        for row in csv_reader:
+    # Clean string checkmarks from all role columns
+    role_cols = {
+        "ref1": "Referee",
+        "ref2": "Referee 2",
+        "ar1": "Assistant 1",
+        "ar2": "Assistant 2",
+        "ref4": "4th Referee",
+    }
 
-            ################## Data from CSV ##################
+    for col in list(role_cols.values()) + ["Supervisor"]:
+        df[col] = (
+            df[col]
+            .fillna("")
+            .astype(str)
+            .str.replace("✅", "", regex=False)
+            .str.replace("⌛", "", regex=False)
+            .str.strip()
+        )
 
-            # Get variables from csv
-            game = row['Game'] 
-            date_str = row['Date']
-            ref1 = row['Referee'].rstrip('✅ ').rstrip('⌛ ')
-            ref2 = row['Referee 2'].rstrip('✅ ').rstrip('⌛ ')
-            ar1  = row['Assistant 1'].rstrip('✅ ').rstrip('⌛ ')
-            ar2  = row['Assistant 2'].rstrip('✅ ').rstrip('⌛ ')
-            ref4 = row['4th Referee'].rstrip('✅ ').rstrip('⌛ ')
-            sup = row['Supervisor'].rstrip('✅ ').rstrip('⌛ ')
+    # Calculate Game level ranks using Categorical typing for fast comparisons
+    df["Prefix"] = df["Game"].apply(get_prefix)
+    prefix_dtype = pd.CategoricalDtype(
+        categories=levels_prefix_lvl, ordered=True
+    )
+    df["Prefix_Rank"] = df["Prefix"].astype(prefix_dtype)
 
+    ################## Use data from CSV ##################
 
-            # Parse the date once per row
-            try:
-                current_date = datetime.strptime(date_str, "%Y-%m-%d").date()
-            except ValueError:
-                continue    # Skip rows with malformed dates
+    global_stats["total_games"] = len(df)
 
+    # Role Parsing & Global Slot counts
+    for role_key, col in role_cols.items():
+        series = df[col]
+        # Total slots defined as non-empty in original CSV
+        non_empty_mask = series != ""
+        filled_mask = ~series.isin(empty_values)
 
-            ################## Use data from CSV ##################
+        global_stats["slots_by_role"][role_key] = int(non_empty_mask.sum())
+        global_stats["filled_by_role"][role_key] = int(filled_mask.sum())
+        global_stats["missing_by_role"][role_key] = int(
+            (non_empty_mask & ~filled_mask).sum()
+        )
 
-            # Increase total stats
-            global_stats["total_games"] += 1
+    global_stats["total_slots"] = sum(global_stats["slots_by_role"].values())
+    global_stats["filled_slots"] = sum(global_stats["filled_by_role"].values())
+    global_stats["missing_slots"] = sum(
+        global_stats["missing_by_role"].values()
+    )
 
-            # Role parsing
-            roles = {"ref1": ref1, "ref2": ref2, "ar1": ar1, "ar2": ar2, "ref4": ref4}
+    # Collect list of all unique officials
+    all_officials_series = pd.concat(
+        [df[c] for c in list(role_cols.values()) + ["Supervisor"]]
+    )
+    unique_officials = set(
+        all_officials_series[~all_officials_series.isin(empty_values)].unique()
+    )
 
-            # Increase official stat for every positions:
-            for role_key, official_name in roles.items():
-                if official_name != "":
-                    global_stats["total_slots"] += 1
-                    global_stats["slots_by_role"][role_key] += 1
-                    
-                    if official_name in empty_values:
-                        global_stats["missing_slots"] += 1
-                        global_stats["missing_by_role"][role_key] += 1
-                    else:
-                        global_stats["filled_slots"] += 1
-                        global_stats["filled_by_role"][role_key] += 1
+    # Has supervisor mask
+    has_sup_mask = ~df["Supervisor"].isin(empty_values)
 
-            # Create new dict entry for all new officials not already in dict
-            for official in [ref1, ref2, ar1, ar2, ref4, sup]:
-                if official not in ref_data and official not in empty_values:
-                    create_official(official, current_date)
-            
-            # Update Count + game dates
-            for role_key, official in roles.items():
-                if official not in empty_values:
-                    profile = ref_data[official]
-                    profile["total_games"] += 1
+    # Populate ref_data dictionary
+    for official in unique_officials:
+        # Match where official worked in any role
+        c_ref1 = df["Referee"] == official
+        c_ref2 = df["Referee 2"] == official
+        c_ar1 = df["Assistant 1"] == official
+        c_ar2 = df["Assistant 2"] == official
+        c_ref4 = df["4th Referee"] == official
+        c_sup = df["Supervisor"] == official
 
-                    # Increase supervised count if game had a supervisor
-                    if sup not in empty_values:
-                        profile["times_supervised"] += 1
-                
-                    #Update oldest and newest games
-                    if current_date < profile["oldest_game"]:
-                        profile["oldest_game"] = current_date
-                    if current_date > profile["newest_game"]:
-                        profile["newest_game"] = current_date
+        central_mask = c_ref1 | c_ref2
+        ar_mask = c_ar1 | c_ar2
+        ref4_mask = c_ref4
+        all_worked_mask = central_mask | ar_mask | ref4_mask
 
-            # Position Specific updates
-            if sup not in empty_values:
-                if current_date < ref_data[sup]["oldest_game"]:
-                    ref_data[sup]["oldest_game"] = current_date
-                if current_date > ref_data[sup]["newest_game"]:
-                    ref_data[sup]["newest_game"] = current_date
+        # Compute statistics using vectorized pandas boolean indexing
+        total_games = int(all_worked_mask.sum())
+        central_count = int(central_mask.sum())
+        ar_count = int(ar_mask.sum())
+        ref4_count = int(ref4_mask.sum())
+        games_supervised = int(c_sup.sum())
 
-            for ref in [ref1, ref2]:
-                if ref not in empty_values:
-                    ref_data[ref]["central_count"] += 1
-                    ref_data[ref]["highest_central_game"] = compare_game(ref_data[ref]["highest_central_game"], game)
-            for ar in [ar1, ar2]:
-                if ar not in empty_values:
-                    ref_data[ar]["ar_count"] += 1
-                    ref_data[ar]["highest_ar_game"] = compare_game(ref_data[ar]["highest_ar_game"], game)
-            if ref4 not in empty_values:
-                ref_data[ref4]["4th_ref_count"] += 1
-            if sup in ref_data and sup not in empty_values:
-                if ref_data[sup]["games_supervised"] == 0:
-                    global_stats["unique_supervisors"] += 1
-                global_stats["supervised_games"] += 1
-                ref_data[sup]["games_supervised"] += 1
+        # Supervised games while acting as field referee
+        times_supervised = int((all_worked_mask & has_sup_mask).sum())
 
-            #
-            # Additional global info
-            #
+        # Dates range
+        working_dates = df.loc[all_worked_mask | c_sup, "Date_Parsed"]
+        oldest_game = str(working_dates.min())[:10]
+        newest_game = str(working_dates.max())[:10]
 
-            location_name = get_location_name(row['Field'])
+        # Highest level game extraction
+        highest_central = ""
+        if central_count > 0:
+            sub_df = df.loc[central_mask, ["Game", "Prefix_Rank"]]
+            sorted_df = sub_df.sort_values(by=["Prefix_Rank"], ascending=[False])
+            highest_central = str(sorted_df["Game"].iloc[0])
 
-            # Tally fields
-            if location_name not in ["Edouard VII", "TBA", ""]:
-                field_distribution[location_name] = field_distribution.get(location_name, 0) + 1
+        highest_ar = ""
+        if ar_count > 0:
+            sub_df = df.loc[ar_mask, ["Game", "Prefix_Rank"]]
+            sorted_df = sub_df.sort_values(by=["Prefix_Rank"], ascending=[False])
+            highest_ar = str(sorted_df["Game"].iloc[0])
 
-            # Create a list of active on-field officials for this game
-            current_crew = [ref1, ref2, ar1, ar2]
-            # Filter out empty values so we only look at actual people
-            active_crew = [name for name in current_crew if name not in empty_values]
+        # Save profile
+        ref_data[official] = {
+            "name": official,
+            "total_games": total_games,
+            "central_count": central_count,
+            "ar_count": ar_count,
+            "4th_ref_count": ref4_count,
+            "highest_central_game": highest_central,
+            "highest_ar_game": highest_ar,
+            "oldest_game": oldest_game,
+            "newest_game": newest_game,
+            "games_supervised": games_supervised,
+            "times_supervised": times_supervised,
+        }
 
-            # We need at least 2 people to make a pairing
-            if len(active_crew) >= 2:
-                # Loop through the crew to find every unique combination of pairs
-                for i in range(len(active_crew)):
-                    for j in range(i + 1, len(active_crew)):
-                        person1 = active_crew[i]
-                        person2 = active_crew[j]
-                        
-                        # Sort alphabetically so the pairing key is always identical
-                        sorted_pair = sorted([person1, person2])
-                        pair_key = f"{sorted_pair[0]} & {sorted_pair[1]}"
-                        
-                        # Increment the pairing count
-                        crew_pairings[pair_key] = crew_pairings.get(pair_key, 0) + 1
-            
-            # Track total games per individual calendar date
-            games_by_date[date_str] = games_by_date.get(date_str, 0) + 1
+        # Track ref_list for CSV output
+        if " " in official:
+            first_name, family_name = official.split(" ", 1)
+        else:
+            first_name, family_name = official, ""
+        ref_list.append({"First Name": first_name, "Last Name": family_name})
+
+    global_stats["unique_refs"] = len(unique_officials)
+    global_stats["unique_supervisors"] = sum(
+        1 for v in ref_data.values() if v["games_supervised"] > 0
+    )
+    global_stats["supervised_games"] = int(has_sup_mask.sum())
+
+    ################## Field Distribution & Pairings ##################
+
+    df["Clean_Location"] = df["Field"].apply(get_location_name)
+    field_counts = df[
+        ~df["Clean_Location"].isin(["Edouard VII", "TBA", "", "Unknown/TBA"])
+    ]["Clean_Location"].value_counts()
+    field_distribution = field_counts.to_dict()
+
+    # Crew pairing counts
+    crew_cols = ["Referee", "Referee 2", "Assistant 1", "Assistant 2"]
+    for _, row in df[crew_cols].iterrows():
+        active_crew = [
+            name for name in row.values if name and name not in empty_values
+        ]
+        if len(active_crew) >= 2:
+            for pair in itertools.combinations(sorted(active_crew), 2):
+                pair_key = f"{pair[0]} & {pair[1]}"
+                crew_pairings[pair_key] = crew_pairings.get(pair_key, 0) + 1
+
+    # Date aggregations
+    games_by_date = df["Date"].value_counts().to_dict()
 
 except FileNotFoundError:
     print("That file was not found")
@@ -288,17 +352,10 @@ except PermissionError:
     print("You do not have permission to read that file")
 
 ########################################################
-# Additional CAlculation and parsing for json conversion
+# Additional Calculation and parsing for json conversion
 ########################################################
 
 ################## Official Stats ##################
-
-# Final conversion of date objects back into strings for clean JSON export
-for official_profile in ref_data.values():
-    if hasattr(official_profile["oldest_game"], "strftime"):
-        official_profile["oldest_game"] = official_profile["oldest_game"].strftime("%Y-%m-%d")
-    if hasattr(official_profile["newest_game"], "strftime"):
-        official_profile["newest_game"] = official_profile["newest_game"].strftime("%Y-%m-%d")
 
 # Convert the dictionary of dictionaries into a list of dictionaries
 referee_json_list = list(ref_data.values())
@@ -307,64 +364,71 @@ referee_json_list = list(ref_data.values())
 
 # Calculate and add coverage percentage
 if global_stats["total_slots"] > 0:
-    global_stats["coverage"] = ((round(global_stats["filled_slots"]/global_stats["total_slots"] * 10000))/100)
+    global_stats["coverage"] = (
+        round(
+            global_stats["filled_slots"]
+            / global_stats["total_slots"]
+            * 10000
+        )
+    ) / 100
 
 # Get sum of all games
-sum_of_all_games = 0
-for official_profile in ref_data.values():
-    # Grab the total games field you already calculated for this specific ref
-    sum_of_all_games += official_profile["total_games"]
+sum_of_all_games = sum(prof["total_games"] for prof in ref_data.values())
 
 # Calculate the average number of games per referee
 if global_stats["unique_refs"] > 0:
-    global_stats["avg_games"] = round(sum_of_all_games/global_stats["unique_refs"])
+    global_stats["avg_games"] = round(
+        sum_of_all_games / global_stats["unique_refs"]
+    )
 
-# Add previously calculated field distribution to the dict:
-global_stats["field distribution"] = dict(sorted(field_distribution.items(), key=lambda x: x[1], reverse=True))
+# Add field distribution:
+global_stats["field distribution"] = dict(
+    sorted(field_distribution.items(), key=lambda x: x[1], reverse=True)
+)
 
-# Get total games per weekday
-for specific_date_str, game_count in games_by_date.items():
-    # Convert string back to a date object to find the weekday
-    date_obj = datetime.strptime(specific_date_str, "%Y-%m-%d").date()
-    weekday_name = weekday_names[date_obj.weekday()] # 0 = Monday, 6 = Sunday
-    
-    total_games_per_weekday[weekday_name] += game_count
-    unique_dates_per_weekday[weekday_name].add(specific_date_str)
+# Get total games & averages per weekday using Pandas
+if not df.empty:
+    df["Weekday"] = df["Date_Parsed"].dt.day_name()
+    weekday_totals = df["Weekday"].value_counts().to_dict()
+    weekday_unique_dates = df.groupby("Weekday")["Date"].nunique().to_dict()
+else:
+    weekday_totals = {}
+    weekday_unique_dates = {}
 
-# Calculate averages and find the busiest day
 weekday_averages = {}
 busiest_day_name = ""
 max_total_games = -1
 
 for day in weekday_names:
-    total_games = total_games_per_weekday[day]
-    unique_day_count = len(unique_dates_per_weekday[day])
-    
-    # Calculate average
+    total_games = weekday_totals.get(day, 0)
+    unique_day_count = weekday_unique_dates.get(day, 0)
+
+    total_games_per_weekday[day] = total_games
     if unique_day_count > 0:
         weekday_averages[day] = int(round(total_games / unique_day_count, 0))
     else:
         weekday_averages[day] = 0
-    weekday_averages[day] = int(weekday_averages[day])
-    
-    # Track which day had the absolute highest total workload overall
+
     if total_games > max_total_games:
         max_total_games = total_games
         busiest_day_name = day
 
-# Add previously calculated day stats to global dict
+# Add day stats to global dict
 global_stats["busiest_day_of_week"] = busiest_day_name
 global_stats["total_games_by_weekday"] = total_games_per_weekday
 global_stats["average_games_by_weekday"] = weekday_averages
 
-
 ################## Official Pairings ##################
 
 # Filter out pairings that have 2 or fewer games together
-frequent_pairings = {pair: count for pair, count in crew_pairings.items() if count > 2}
+frequent_pairings = {
+    pair: count for pair, count in crew_pairings.items() if count > 2
+}
 
 # Sort the filtered pairings from most frequent to least frequent
-sorted_pairings = dict(sorted(frequent_pairings.items(), key=lambda item: item[1], reverse=True))
+sorted_pairings = dict(
+    sorted(frequent_pairings.items(), key=lambda item: item[1], reverse=True)
+)
 
 ########################################################
 # Writing to json
@@ -386,19 +450,16 @@ with open("crew_pairings.json", "w", encoding="utf-8") as json_file:
     print("Successfully saved data to crew_pairings.json (Filtered: > 2 games)")
 
 # Open a new file and write the list as csv
-ref_list_fields = ["First Name", "Last Name"]
-with open("ref_list.csv", "w", newline="", encoding="utf-8") as csv_file:
-    writer = csv.DictWriter(csv_file, fieldnames=ref_list_fields)
-    writer.writeheader()  # Writes header
-    writer.writerows(ref_list)
-    print("Successfully saved list of referees to ref_list.csv")
+pd.DataFrame(ref_list).to_csv("ref_list.csv", index=False, encoding="utf-8")
+print("Successfully saved list of referees to ref_list.csv")
 
 ########################################################
 # Helper function to get data from referee stats
 ########################################################
+
+
 def get_top_referees(n=10):
     """Returns the top N referees sorted by total games officiated."""
-    # Sort officials by total_games in descending order
     sorted_refs = sorted(
         ref_data.values(), key=lambda x: x["total_games"], reverse=True
     )
@@ -416,6 +477,7 @@ def get_top_supervisors(n=5):
 def get_official_profile(name):
     """Retrieves the full profile for a given official by name."""
     return ref_data.get(name, f"Official '{name}' not found.")
+
 
 print("\n--- TOP 10 REFEREES BY TOTAL GAMES ---")
 for rank, ref in enumerate(get_top_referees(10), start=1):
@@ -435,9 +497,8 @@ print("\n--- FULL PROFILE LOOKUP ---")
 print("\n--------------------------------------------")
 while True:
     ref_name = input("Enter a referee name: ")
-    profile = get_official_profile(ref_name)  # Replace with actual name
+    profile = get_official_profile(ref_name)
     if isinstance(profile, dict):
         print(json.dumps(profile, indent=4, ensure_ascii=False))
     else:
         print(profile)
-
