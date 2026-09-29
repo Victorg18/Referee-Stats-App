@@ -8,7 +8,7 @@ import pandas as pd
 ########################################################
 
 # Write Correct file path
-file_path = "april_to_july_assignment.csv"
+file_path = "august_assignments.csv"
 
 # List of day of the week
 weekday_names = [
@@ -212,6 +212,11 @@ try:
             .str.strip()
         )
 
+    # Filter out cancelled games (games where all referee roles are empty)
+    all_role_columns = list(role_cols.values()) + ["Supervisor"]
+    has_any_referee = ~df[all_role_columns].isin(empty_values).all(axis=1)
+    df = df[has_any_referee].copy()
+
     # Calculate Game level ranks using Categorical typing for fast comparisons
     df["Prefix"] = df["Game"].apply(get_prefix)
     prefix_dtype = pd.CategoricalDtype(
@@ -232,15 +237,11 @@ try:
 
         global_stats["slots_by_role"][role_key] = int(non_empty_mask.sum())
         global_stats["filled_by_role"][role_key] = int(filled_mask.sum())
-        global_stats["missing_by_role"][role_key] = int(
-            (non_empty_mask & ~filled_mask).sum()
-        )
+        global_stats["missing_by_role"][role_key] = int((non_empty_mask & ~filled_mask).sum())
 
     global_stats["total_slots"] = sum(global_stats["slots_by_role"].values())
     global_stats["filled_slots"] = sum(global_stats["filled_by_role"].values())
-    global_stats["missing_slots"] = sum(
-        global_stats["missing_by_role"].values()
-    )
+    global_stats["missing_slots"] = sum(global_stats["missing_by_role"].values())
 
     # Collect list of all unique officials
     all_officials_series = pd.concat(
@@ -390,10 +391,26 @@ global_stats["field distribution"] = dict(
 if not df.empty:
     df["Weekday"] = df["Date_Parsed"].dt.day_name()
     weekday_totals = df["Weekday"].value_counts().to_dict()
-    weekday_unique_dates = df.groupby("Weekday")["Date"].nunique().to_dict()
+
+    # Extract year and month from the data (e.g. August 2026)
+    sample_date = df["Date_Parsed"].iloc[0]
+    year = sample_date.year
+    month = sample_date.month
+
+    # Generate EVERY calendar day in that entire month
+    start_of_month = pd.Timestamp(year=year, month=month, day=1)
+    end_of_month = start_of_month + pd.offsets.MonthEnd(1)
+    full_month_days = pd.date_range(
+        start=start_of_month, end=end_of_month, freq="D"
+    )
+
+    # Count actual total Mondays, Tuesdays, Saturdays, etc. in the month calendar
+    calendar_weekday_counts = (
+        full_month_days.day_name().value_counts().to_dict()
+    )
 else:
     weekday_totals = {}
-    weekday_unique_dates = {}
+    calendar_weekday_counts = {}
 
 weekday_averages = {}
 busiest_day_name = ""
@@ -401,11 +418,14 @@ max_total_games = -1
 
 for day in weekday_names:
     total_games = weekday_totals.get(day, 0)
-    unique_day_count = weekday_unique_dates.get(day, 0)
+
+    # Divide by actual calendar count of that day in the full month (e.g. 5 Saturdays)
+    month_day_count = calendar_weekday_counts.get(day, 0)
 
     total_games_per_weekday[day] = total_games
-    if unique_day_count > 0:
-        weekday_averages[day] = int(round(total_games / unique_day_count, 0))
+
+    if month_day_count > 0:
+        weekday_averages[day] = int(round(total_games / month_day_count))
     else:
         weekday_averages[day] = 0
 
