@@ -8,7 +8,7 @@ import pandas as pd
 ########################################################
 
 # Write Correct file path
-file_path = "august_assignments.csv"
+file_path = "assignment lists\july_assignments.csv"
 
 # List of day of the week
 weekday_names = [
@@ -472,53 +472,3 @@ with open("crew_pairings.json", "w", encoding="utf-8") as json_file:
 # Open a new file and write the list as csv
 pd.DataFrame(ref_list).to_csv("ref_list.csv", index=False, encoding="utf-8")
 print("Successfully saved list of referees to ref_list.csv")
-
-########################################################
-# Helper function to get data from referee stats
-########################################################
-
-
-def get_top_referees(n=10):
-    """Returns the top N referees sorted by total games officiated."""
-    sorted_refs = sorted(
-        ref_data.values(), key=lambda x: x["total_games"], reverse=True
-    )
-    return sorted_refs[:n]
-
-
-def get_top_supervisors(n=5):
-    """Returns the top N supervisors sorted by games supervised."""
-    sorted_sups = sorted(
-        ref_data.values(), key=lambda x: x["games_supervised"], reverse=True
-    )
-    return sorted_sups[:n]
-
-
-def get_official_profile(name):
-    """Retrieves the full profile for a given official by name."""
-    return ref_data.get(name, f"Official '{name}' not found.")
-
-
-print("\n--- TOP 10 REFEREES BY TOTAL GAMES ---")
-for rank, ref in enumerate(get_top_referees(10), start=1):
-    print(
-        f"{rank:2d}. {ref['name']:<20} | Games: {ref['total_games']} "
-        f"(Central: {ref['central_count']}, AR: {ref['ar_count']})"
-    )
-
-print("\n--- TOP SUPERVISOR ---")
-top_sup = get_top_supervisors(5)
-if top_sup:
-    sup = top_sup[0]
-    print(f"Name: {sup['name']}")
-    print(f"Games Supervised: {sup['games_supervised']}")
-
-print("\n--- FULL PROFILE LOOKUP ---")
-print("\n--------------------------------------------")
-while True:
-    ref_name = input("Enter a referee name: ")
-    profile = get_official_profile(ref_name)
-    if isinstance(profile, dict):
-        print(json.dumps(profile, indent=4, ensure_ascii=False))
-    else:
-        print(profile)

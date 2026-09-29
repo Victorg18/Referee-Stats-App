@@ -1,11 +1,11 @@
-/large_sample.csv
-/small_sample.csv
-/matchs_juin.csv
-/april_to_july_assignment.csv
-/august_assignments.csv
-/referee_stats.json
+# Where Assignments per games csv go
+/assignment lists
+
+# Files created by the program
 /global_stats.json
-/crew_pairings.json
-/days_stats.json
 /ref_list.csv
+/referee_stats.json
+/crew_pairings.json
+
+# Virtual Environment
 .venv/
