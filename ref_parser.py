@@ -2,13 +2,37 @@ import itertools
 import json
 import numpy as np
 import pandas as pd
+from pathlib import Path
+
+########################################################
+# PROMPT USER FOR FILE TO ANALYZE
+########################################################
+
+# Define the base directory where your CSV files are stored
+data_dir = Path("assignment lists")
+
+# Prompt the user for just the filename in the console
+filename = input("Enter the CSV filename to analyze (e.g., last_year.csv): ").strip()
+
+# Clean up quotes if dragged & dropped
+filename_clean = filename.strip('"\'')
+
+# Automatically append .csv if the user didn't type it
+if not filename_clean.lower().endswith(".csv"):
+    filename_clean += ".csv"
+
+# Combine the directory and filename
+file_path = data_dir / filename_clean
+
+# Check if the file exists before proceeding
+if not file_path.is_file():
+    print(f"Error: Could not find '{file_path}'. Please make sure the file exists inside the '{data_dir}' folder.")
+    exit(1)
+
 
 ########################################################
 # PROGRAM CONSTANTS AND VARIABLES
 ########################################################
-
-# Write Correct file path
-file_path = "assignment lists\july_assignments.csv"
 
 # List of day of the week
 weekday_names = [
@@ -392,25 +416,16 @@ if not df.empty:
     df["Weekday"] = df["Date_Parsed"].dt.day_name()
     weekday_totals = df["Weekday"].value_counts().to_dict()
 
-    # Extract year and month from the data (e.g. August 2026)
-    sample_date = df["Date_Parsed"].iloc[0]
-    year = sample_date.year
-    month = sample_date.month
-
-    # Generate EVERY calendar day in that entire month
-    start_of_month = pd.Timestamp(year=year, month=month, day=1)
-    end_of_month = start_of_month + pd.offsets.MonthEnd(1)
-    full_month_days = pd.date_range(
-        start=start_of_month, end=end_of_month, freq="D"
-    )
-
-    # Count actual total Mondays, Tuesdays, Saturdays, etc. in the month calendar
-    calendar_weekday_counts = (
-        full_month_days.day_name().value_counts().to_dict()
-    )
+    # Calculate total weeks between the first and last game date
+    min_date = df["Date_Parsed"].min()
+    max_date = df["Date_Parsed"].max()
+    
+    # Calculate difference in days (inclusive of both start and end days) and convert to weeks
+    total_days = (max_date - min_date).days + 1
+    total_weeks = max(total_days / 7.0, 1.0)  # Avoid division by zero
 else:
     weekday_totals = {}
-    calendar_weekday_counts = {}
+    total_weeks = 1.0
 
 weekday_averages = {}
 busiest_day_name = ""
@@ -418,16 +433,10 @@ max_total_games = -1
 
 for day in weekday_names:
     total_games = weekday_totals.get(day, 0)
-
-    # Divide by actual calendar count of that day in the full month (e.g. 5 Saturdays)
-    month_day_count = calendar_weekday_counts.get(day, 0)
-
     total_games_per_weekday[day] = total_games
 
-    if month_day_count > 0:
-        weekday_averages[day] = int(round(total_games / month_day_count))
-    else:
-        weekday_averages[day] = 0
+    # Divide total games on this weekday by total weeks in the span
+    weekday_averages[day] = int(round(total_games / total_weeks))
 
     if total_games > max_total_games:
         max_total_games = total_games
@@ -451,24 +460,28 @@ sorted_pairings = dict(
 )
 
 ########################################################
-# Writing to json
+# Writing to json and csv (Using pathlib)
 ########################################################
 
-# Open a new file and write the list as JSON
-with open("referee_stats.json", "w", encoding="utf-8") as json_file:
+# Define and create the results directory
+output_dir = Path("results")
+output_dir.mkdir(parents=True, exist_ok=True)
+
+# Write referee stats JSON
+with open(output_dir / "referee_stats.json", "w", encoding="utf-8") as json_file:
     json.dump(referee_json_list, json_file, indent=4, ensure_ascii=False)
-    print("Successfully saved data to referee_stats.json")
+    print("Successfully saved data to results/referee_stats.json")
 
-# Open a new file and write the list as JSON
-with open("global_stats.json", "w", encoding="utf-8") as json_file:
+# Write global stats JSON
+with open(output_dir / "global_stats.json", "w", encoding="utf-8") as json_file:
     json.dump(global_stats, json_file, indent=4, ensure_ascii=False)
-    print("Successfully saved data to global_stats.json")
+    print("Successfully saved data to results/global_stats.json")
 
-# Open a new file and write the list as JSON
-with open("crew_pairings.json", "w", encoding="utf-8") as json_file:
+# Write crew pairings JSON
+with open(output_dir / "crew_pairings.json", "w", encoding="utf-8") as json_file:
     json.dump(sorted_pairings, json_file, indent=4, ensure_ascii=False)
-    print("Successfully saved data to crew_pairings.json (Filtered: > 2 games)")
+    print("Successfully saved data to results/crew_pairings.json (Filtered: > 2 games)")
 
-# Open a new file and write the list as csv
-pd.DataFrame(ref_list).to_csv("ref_list.csv", index=False, encoding="utf-8")
-print("Successfully saved list of referees to ref_list.csv")
+# Write referee list CSV (Pandas natively accepts Path objects)
+pd.DataFrame(ref_list).to_csv(output_dir / "ref_list.csv", index=False, encoding="utf-8")
+print("Successfully saved list of referees to results/ref_list.csv")
